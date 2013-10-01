@@ -7,7 +7,7 @@ public class PlayerController {
 	
 	private Hand playerHand;
 	
-	public void startRound(Hand playerHand) {
+	public void startRound(Hand playerHand, Card dealerUpCard) {
 		
 	}
 	

@@ -28,7 +28,12 @@ public class Player {
 		myHand.addCard(c);
 	}
 	
+	public Hand getHand() {
+		return myHand;
+	}
+	
 	public void bet(int amount) {
+		stack -= amount;
 		currentWager += amount;
 	}
 	
