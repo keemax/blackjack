@@ -6,6 +6,7 @@ import model.Hand;
 public class Player {
 
     String id;
+    String name;
 	private Hand myHand;
 	private int stack;
 	private int currentWager;
@@ -27,6 +28,14 @@ public class Player {
 
     public void setId(String id) {
         this.id = id;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
     }
 	
 	public void giveChips(int amount) {

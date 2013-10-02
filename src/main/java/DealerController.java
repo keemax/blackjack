@@ -32,7 +32,7 @@ public class DealerController {
     private boolean done = false;
     private int currentPosition = 0;
     private int dealRequests = 0;
-//    private IdGenerator idGen;
+    private IdGenerator idGen;
 
     private final Lock dealerLock;
     private final Object playerMonitor;
@@ -46,7 +46,7 @@ public class DealerController {
         roundInfo = new StartInfo();
 		dealerLock = new ReentrantLock();
         playerMonitor = new Object();
-//        idGen = new IdGenerator();
+        idGen = new IdGenerator();
         NUM_ROUNDS = numRounds;
 	}
 	
@@ -58,8 +58,9 @@ public class DealerController {
 		dealerLock.lock();
         Player newPlayer = new Player(playerCount);
         playerCount++;
-        String playerId = name;
+        String playerId = idGen.nextId();
         newPlayer.setId(playerId);
+        newPlayer.setName(name);
         newPlayer.giveChips(STARTING_CHIPS);
         players.put(playerId, newPlayer);
         System.out.println("added player with id: " + playerId);
@@ -86,7 +87,7 @@ public class DealerController {
             return null;
         }
         if (thisPlayer.getCurrentWager() != 0) {
-            System.err.println("player " + playerId + " has already placed his/her bet");
+            System.err.println(thisPlayer.getName() + " has already placed his/her bet");
             dealerLock.unlock();
             return null;
         }
@@ -97,7 +98,7 @@ public class DealerController {
             }
             return null;
         }
-        System.out.println("deal requested: setting player " + playerId + "'s wager to " + wager);
+        System.out.println("deal requested: setting " + thisPlayer.getName() + "'s wager to " + wager);
         dealRequests++;
         thisPlayer.setCurrentWager(wager);
 
@@ -130,7 +131,7 @@ public class DealerController {
             System.err.println("invalid player id: " + playerId);
         }
         else if (!thisPlayer.isActive()) {
-            System.err.println("player " + playerId + " has already finished round");
+            System.err.println(thisPlayer.getName() + " has already finished round");
         }
         else {
             dealerLock.unlock();
@@ -141,6 +142,7 @@ public class DealerController {
             newCard = deck.drawCard();
             roundInfo.addRevealedCard(newCard);
             thisPlayer.giveCard(newCard);
+            System.out.println(thisPlayer.getName() + "hits: " + newCard.toString());
             checkBust(thisPlayer);
         }
 
@@ -156,7 +158,7 @@ public class DealerController {
             System.err.println("invalid player id: " + playerId);
         }
         else if (!thisPlayer.isActive()) {
-            System.err.println("player " + playerId + " has already finished round");
+            System.err.println(thisPlayer.getName() + " has already finished round");
         }
         else {
             thisPlayer.setActive(false);
@@ -166,6 +168,7 @@ public class DealerController {
                 determineDealerHand();
             }
             else {
+                System.out.println(thisPlayer.getName() + " stands");
                 playerDone();
             }
         }
@@ -187,7 +190,7 @@ public class DealerController {
                 roundInfo.addRevealedCard(newCard);
                 player.giveCard(newCard);
                 players.put(player.getId(), player);
-                System.out.println("dealing " + newCard.toString() + " to player " + player.getId());
+                System.out.println("dealing " + newCard.toString() + " to " + player.getName());
             }
             Card dealerCard = deck.drawCard();
             dealerHand.addCard(dealerCard);
@@ -203,7 +206,7 @@ public class DealerController {
     private void checkBust(Player player) {
         //if players hand is over 21, take their wager and set them to inactive for this round
         if (player.getHand().getValue() > 21) {
-            System.out.println("player " + player.getId() + " busted");
+            System.out.println(player.getName() + " busted with a " + player.getHand().getValue());
             player.setCurrentWager(0);
             player.setActive(false);
             currentPosition++;
@@ -247,12 +250,12 @@ public class DealerController {
             for (Player p : players.values()) {
                 //player hand beats dealer
                 if (p.getHand().getValue() > dealer && p.getHand().getValue() <= 21) {
-                    System.out.println("player " + p.getId() + " beat dealer with a " + p.getHand().getValue());
+                    System.out.println(p.getName() + " beat dealer with a " + p.getHand().getValue());
                     p.giveChips(p.getCurrentWager() * 2);
                 }
                 //push
                 else if (p.getHand().getValue() == dealer) {
-                    System.out.println("player " + p.getId() + " pushes");
+                    System.out.println(p.getName() + " pushes");
                     p.giveChips(p.getCurrentWager());
                 }
                 p.setCurrentWager(0);
@@ -275,7 +278,7 @@ public class DealerController {
     private void printResults() {
         System.out.println("****************** game over ******************\n\n");
         for (Player p : players.values()) {
-            System.out.println("player " + p.getId() + ":");
+            System.out.println(p.getName() + ":");
             System.out.println("\tchip total: " + p.getStack());
             System.out.println(" ");
         }
