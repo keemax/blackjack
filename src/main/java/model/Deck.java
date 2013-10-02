@@ -1,4 +1,4 @@
-package main.model;
+package model;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -28,7 +28,7 @@ public class Deck {
 	//draws random card from remaining
 	//returns null if deck is empty
 	public Card drawCard() {
-		if (cards.isEmpty()) {
+		if (cards.size() < 15) {
 			return null;
 		}
 		int cardIndex = rand.nextInt(cards.size());

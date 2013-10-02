@@ -1,9 +1,9 @@
-package test.model;
+package model;
 
 import java.util.List;
 
-import main.model.Card;
-import main.model.Hand;
+import model.Card;
+import model.Hand;
 import junit.framework.TestCase;
 
 public class HandTest extends TestCase {

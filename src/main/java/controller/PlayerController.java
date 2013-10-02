@@ -1,7 +1,7 @@
-package main.controller;
+package controller;
 
-import main.model.Card;
-import main.model.Hand;
+import model.Card;
+import model.Hand;
 
 public class PlayerController {
 	

@@ -1,4 +1,4 @@
-package main.model;
+package model;
 
 public class Card {
 
@@ -8,7 +8,8 @@ public class Card {
 	public enum Suit { 
 		CLUBS, DIAMONDS, HEARTS, SPADES 
 	}
-	private Suit suit;
+
+    private Suit suit;
 
 
 	public Card() {
@@ -46,5 +47,13 @@ public class Card {
 		return value;
 	}
 
+    @Override
+    public String toString() {
+        return "Card{" +
+                "rank=" + rank +
+                ", value=" + value +
+                ", suit=" + suit +
+                '}';
+    }
 
 }

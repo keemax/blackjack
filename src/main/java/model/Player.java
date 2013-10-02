@@ -1,16 +1,29 @@
-package main.model;
+package model;
+
+import model.Card;
+import model.Hand;
 
 public class Player {
-	
+
+    int id;
 	private Hand myHand;
 	private int stack;
 	private int currentWager;
 	
 	public Player() {
+        id = 0;
 		myHand = new Hand();
 		stack = 0;
 		currentWager = 0;
 	}
+
+    public int getId() {
+        return id;
+    }
+
+    public void setId(int id) {
+        this.id = id;
+    }
 	
 	public void giveChips(int amount) {
 		stack += amount;
@@ -20,7 +33,7 @@ public class Player {
 		stack -= amount;
 	}
 	
-	public double getChipTotal() {
+	public int getStack() {
 		return stack;
 	}
 	
@@ -31,15 +44,18 @@ public class Player {
 	public Hand getHand() {
 		return myHand;
 	}
+
+    public void discardHand() {
+        myHand = new Hand();
+    }
 	
-	public void bet(int amount) {
+	public void setCurrentWager(int amount) {
 		stack -= amount;
-		currentWager += amount;
+		currentWager = amount;
 	}
-	
-	public void resetWager() {
-		currentWager = 0;
-	}
+    public int getCurrentWager() {
+        return currentWager;
+    }
 	
 
 }

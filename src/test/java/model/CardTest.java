@@ -1,7 +1,7 @@
-package test.model;
+package model;
 
 import junit.framework.TestCase;
-import main.model.Card;
+import model.Card;
 
 public class CardTest extends TestCase {
 	private Card testCard;

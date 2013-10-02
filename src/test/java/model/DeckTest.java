@@ -1,7 +1,7 @@
-package test.model;
+package model;
 
-import main.model.Card;
-import main.model.Deck;
+import model.Card;
+import model.Deck;
 import junit.framework.TestCase;
 
 public class DeckTest extends TestCase {
