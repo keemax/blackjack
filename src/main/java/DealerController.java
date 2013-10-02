@@ -11,9 +11,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import util.IdGenerator;
 
-//TODO: blackjack
+//TODO: blackjack                 *done
 //TODO: double down?
-//TODO: player loses all money
+//TODO: player loses all money    *done
 
 @RestController
 @EnableAutoConfiguration
@@ -38,7 +38,7 @@ public class DealerController {
     private final Object playerMonitor;
 
     public DealerController() {
-        this(100);
+        this(1000);
     }
 	public DealerController(int numRounds) {
         deck = new Deck();
@@ -56,7 +56,8 @@ public class DealerController {
 	public String addPlayer(@RequestParam(value = "name", required = true) String name) {
 
 		dealerLock.lock();
-        Player newPlayer = new Player(playerCount);
+        Player newPlayer = new Player();
+        newPlayer.setPosition(playerCount);
         playerCount++;
         String playerId = idGen.nextId();
         newPlayer.setId(playerId);
@@ -81,6 +82,17 @@ public class DealerController {
             dealerLock.unlock();
             return null;
         }
+        if (thisPlayer.getStack() < MINIMUM_WAGER) {
+            int playerPosition = thisPlayer.getPosition();
+            players.remove(playerId);
+            for (Player p : players.values()) {
+                int position = p.getPosition();
+                if (position > playerPosition) {
+                    p.setPosition(position - 1);
+                }
+            }
+            playerCount--;
+        }
         if (wager < MINIMUM_WAGER || wager > thisPlayer.getStack()) {
             System.err.println("invalid wager amount: " + wager);
             dealerLock.unlock();
@@ -93,7 +105,6 @@ public class DealerController {
         }
         if (round == NUM_ROUNDS) {
             if (!done) {
-                printResults();
                 done = true;
             }
             return null;
@@ -142,7 +153,7 @@ public class DealerController {
             newCard = deck.drawCard();
             roundInfo.addRevealedCard(newCard);
             thisPlayer.giveCard(newCard);
-            System.out.println(thisPlayer.getName() + "hits: " + newCard.toString());
+            System.out.println(thisPlayer.getName() + " hits: " + newCard.toString());
             checkBust(thisPlayer);
         }
 
@@ -225,11 +236,24 @@ public class DealerController {
         Card dealerDownCard = dealerHand.getCards().get(0);
         System.out.println("revealing dealer down card: " + dealerDownCard.toString());
         roundInfo.addRevealedCard(dealerDownCard);
-        while (dealerHand.getValue() < 17 && (dealerHand.isSoft() && dealerHand.getValue() < 8)) {
-            Card newCard = deck.drawCard();
-            System.out.println("dealer hits: " + newCard.toString());
-            roundInfo.addRevealedCard(newCard);
-            dealerHand.addCard(newCard);
+        if (dealerHand.isSoft()) {
+            while(dealerHand.getValue() < 8) {
+                checkDeck();
+                Card newCard = deck.drawCard();
+                System.out.println("dealer hits: " + newCard.toString());
+                roundInfo.addRevealedCard(newCard);
+                dealerHand.addCard(newCard);
+            }
+        }
+        else {
+            while (dealerHand.getValue() < 17) {
+                checkDeck();
+                Card newCard = deck.drawCard();
+                System.out.println("dealer hits: " + newCard.toString());
+                roundInfo.addRevealedCard(newCard);
+                dealerHand.addCard(newCard);
+            }
+
         }
 
         int dealer = dealerHand.getValue();
@@ -248,19 +272,26 @@ public class DealerController {
         }
         else {
             for (Player p : players.values()) {
+                Hand playerHand = p.getHand();
+                //blackjack
+                if (playerHand.getValue() == 21 && playerHand.getCards().size() == 2) {
+                    System.out.println(p.getName() + " got a blackjack!");
+                    p.giveChips((int)Math.ceil((double)p.getCurrentWager() * 2.5));
+                }
                 //player hand beats dealer
-                if (p.getHand().getValue() > dealer && p.getHand().getValue() <= 21) {
-                    System.out.println(p.getName() + " beat dealer with a " + p.getHand().getValue());
+                else if (playerHand.getValue() > dealer && playerHand.getValue() <= 21) {
+                    System.out.println(p.getName() + " beat dealer with a " + playerHand.getValue());
                     p.giveChips(p.getCurrentWager() * 2);
                 }
                 //push
-                else if (p.getHand().getValue() == dealer) {
+                else if (playerHand.getValue() == dealer) {
                     System.out.println(p.getName() + " pushes");
                     p.giveChips(p.getCurrentWager());
                 }
                 p.setCurrentWager(0);
             }
         }
+        printTotals();
         currentPosition = 0;
         playerDone();
 
@@ -275,13 +306,12 @@ public class DealerController {
     }
 
 
-    private void printResults() {
-        System.out.println("****************** game over ******************\n\n");
+    private void printTotals() {
+        System.out.println("****************** chip totals ******************\n");
         for (Player p : players.values()) {
-            System.out.println(p.getName() + ":");
-            System.out.println("\tchip total: " + p.getStack());
-            System.out.println(" ");
+            System.out.println("\t" + p.getName() + ": " + p.getStack());
         }
+        System.out.println("");
     }
 
     private void playerWait() {

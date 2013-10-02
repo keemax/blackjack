@@ -11,15 +11,14 @@ public class Player {
 	private int stack;
 	private int currentWager;
     boolean active;
-
-    private final int position;
+    private int position;
 	
-	public Player(int position) {
+	public Player() {
 		myHand = new Hand();
 		stack = 0;
 		currentWager = 0;
         active = false;
-        this.position = position;
+        position = 0;
 	}
 
     public String getId() {
@@ -81,6 +80,11 @@ public class Player {
     public int getPosition() {
         return position;
     }
-	
+
+    public void setPosition(int position) {
+        this.position = position;
+    }
+
+
 
 }
