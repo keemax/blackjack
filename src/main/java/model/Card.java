@@ -47,6 +47,13 @@ public class Card {
 		return value;
 	}
 
+    public Card clone() {
+        Card cloneCard = new Card();
+        cloneCard.setRank(this.rank);
+        cloneCard.setSuit(this.suit);
+        return cloneCard;
+    }
+
     @Override
     public String toString() {
         return "Card{" +

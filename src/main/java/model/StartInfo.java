@@ -13,8 +13,14 @@ import java.util.List;
 public class StartInfo {
 
     private List<Card> revealedCards;
+    private Hand yourHand;
     private Card dealerUpCard;
     private boolean shuffled;
+
+    public StartInfo() {
+        revealedCards = new ArrayList<Card>();
+        yourHand = new Hand();
+    }
 
     public boolean isShuffled() {
         return shuffled;
@@ -22,10 +28,6 @@ public class StartInfo {
 
     public void setShuffled(boolean shuffled) {
         this.shuffled = shuffled;
-    }
-
-    public StartInfo() {
-        revealedCards = new ArrayList<Card>();
     }
 
     public List<Card> getRevealedCards() {
@@ -40,11 +42,36 @@ public class StartInfo {
         revealedCards.add(card);
     }
 
+    public Hand getYourHand() {
+        return yourHand;
+    }
+
+    public void setYourHand(Hand yourHand) {
+        this.yourHand = yourHand;
+    }
+
     public Card getDealerUpCard() {
         return dealerUpCard;
     }
 
     public void setDealerUpCard(Card dealerUpCard) {
         this.dealerUpCard = dealerUpCard;
+    }
+
+    public StartInfo clone() {
+        StartInfo clone = new StartInfo();
+        List<Card> cloneRevealedCards = new ArrayList<Card>();
+        for(Card c : this.revealedCards) {
+            cloneRevealedCards.add(c.clone());
+        }
+        clone.setRevealedCards(cloneRevealedCards);
+        Hand cloneHand = new Hand();
+        for (Card c : yourHand.getCards()) {
+            cloneHand.addCard(c.clone());
+        }
+        clone.setYourHand(cloneHand);
+        clone.setDealerUpCard(this.dealerUpCard.clone());
+        clone.setShuffled(this.shuffled);
+        return clone;
     }
 }

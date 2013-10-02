@@ -28,9 +28,9 @@ public class Deck {
 	//draws random card from remaining
 	//returns null if deck is empty
 	public Card drawCard() {
-		if (cards.size() < 15) {
-			return null;
-		}
+        if (cards.size() == 0) {
+            return null;
+        }
 		int cardIndex = rand.nextInt(cards.size());
 		return cards.remove(cardIndex);
 	}

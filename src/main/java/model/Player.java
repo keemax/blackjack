@@ -9,12 +9,14 @@ public class Player {
 	private Hand myHand;
 	private int stack;
 	private int currentWager;
+    boolean active;
 	
 	public Player() {
         id = 0;
 		myHand = new Hand();
 		stack = 0;
 		currentWager = 0;
+        active = false;
 	}
 
     public int getId() {
@@ -55,6 +57,14 @@ public class Player {
 	}
     public int getCurrentWager() {
         return currentWager;
+    }
+
+    public boolean isActive() {
+        return active;
+    }
+
+    public void setActive(boolean active) {
+        this.active = active;
     }
 	
 
