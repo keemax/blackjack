@@ -2,17 +2,18 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import model.*;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.RestController;
+import util.IdGenerator;
 
 //TODO: blackjack
+//TODO: double down?
+//TODO: player loses all money
 
 @RestController
 @EnableAutoConfiguration
@@ -23,35 +24,41 @@ public class DealerController {
 	
 	private Deck deck;
 	private Hand dealerHand;
-	private Map<Integer, Player> players;
+	private Map<String, Player> players;
 	private int playerCount = 0;
-    private int playersLeft = 0;
     private StartInfo roundInfo;
     private final int NUM_ROUNDS;
     private int round = 0;
     private boolean done = false;
+    private int currentPosition = 0;
+    private int dealRequests = 0;
+//    private IdGenerator idGen;
 
     private final Lock dealerLock;
+    private final Object playerMonitor;
 
     public DealerController() {
         this(100);
     }
 	public DealerController(int numRounds) {
         deck = new Deck();
-		players = new HashMap<Integer, Player>();
+		players = new HashMap<String, Player>();
         roundInfo = new StartInfo();
 		dealerLock = new ReentrantLock();
+        playerMonitor = new Object();
+//        idGen = new IdGenerator();
         NUM_ROUNDS = numRounds;
 	}
 	
 	//creates new player and gives them 1000 chips
 	//returns id of player for use in requests
     @RequestMapping("/addPlayer")
-	public int addPlayer() {
+	public String addPlayer(@RequestParam(value = "name", required = true) String name) {
 
 		dealerLock.lock();
-        int playerId = playerCount++;
-        Player newPlayer = new Player();
+        Player newPlayer = new Player(playerCount);
+        playerCount++;
+        String playerId = name;
         newPlayer.setId(playerId);
         newPlayer.giveChips(STARTING_CHIPS);
         players.put(playerId, newPlayer);
@@ -65,7 +72,7 @@ public class DealerController {
     //deals cards in standard order
     //returns a list of hands and dealer up card
     @RequestMapping("/start")
-	public StartInfo start(@RequestParam(value = "playerId", required = true) int playerId, @RequestParam(value = "wager", required = true) int wager) {
+	public StartInfo start(@RequestParam(value = "playerId", required = true) String playerId, @RequestParam(value = "wager", required = true) int wager) {
         dealerLock.lock();
         Player thisPlayer = players.get(playerId);
         if (thisPlayer == null) {
@@ -90,63 +97,79 @@ public class DealerController {
             }
             return null;
         }
-
         System.out.println("deal requested: setting player " + playerId + "'s wager to " + wager);
+        dealRequests++;
         thisPlayer.setCurrentWager(wager);
 
-        if (playersLeft == 0) {
+        if (dealRequests == 1) {
             round++;
             dealCards();
         }
-        playersLeft++;
+
         roundInfo.setYourHand(thisPlayer.getHand());
-        if (playersLeft == playerCount) {
+        if (dealRequests == playerCount) {
             StartInfo roundInfoClone = roundInfo.clone();
             roundInfo.getRevealedCards().clear();
             roundInfo.setShuffled(false);
+            dealRequests = 0;
             dealerLock.unlock();
             return roundInfoClone;
         }
+
         dealerLock.unlock();
         return roundInfo;
     }
 
     @RequestMapping("/hit")
-	public Card hit(@RequestParam(value = "playerId", required = true) int playerId) {
+	public Card hit(@RequestParam(value = "playerId", required = true) String playerId) {
 		dealerLock.lock();
         checkDeck();
 		Player thisPlayer = players.get(playerId);
+        Card newCard = null;
         if (thisPlayer == null) {
             System.err.println("invalid player id: " + playerId);
-            dealerLock.unlock();
-            return null;
         }
         else if (!thisPlayer.isActive()) {
             System.err.println("player " + playerId + " has already finished round");
-            dealerLock.unlock();
-            return null;
         }
-        Card newCard = deck.drawCard();
-        roundInfo.addRevealedCard(newCard);
-		thisPlayer.giveCard(newCard);
-        checkBust(thisPlayer);
+        else {
+            dealerLock.unlock();
+            while(thisPlayer.getPosition() != currentPosition) {
+                playerWait();
+            }
+            dealerLock.lock();
+            newCard = deck.drawCard();
+            roundInfo.addRevealedCard(newCard);
+            thisPlayer.giveCard(newCard);
+            checkBust(thisPlayer);
+        }
 
 		dealerLock.unlock();
         return newCard;
 	}
 
     @RequestMapping("/stand")
-    public void stand(@RequestParam(value = "playerId", required = true) int playerId) {
+    public void stand(@RequestParam(value = "playerId", required = true) String playerId) {
         dealerLock.lock();
         Player thisPlayer = players.get(playerId);
         if (thisPlayer == null) {
             System.err.println("invalid player id: " + playerId);
-            dealerLock.unlock();
+        }
+        else if (!thisPlayer.isActive()) {
+            System.err.println("player " + playerId + " has already finished round");
         }
         else {
             thisPlayer.setActive(false);
-            dealerLock.unlock();
+            currentPosition++;
+            if (currentPosition == playerCount) {
+                System.out.println("all players done, dealer's turn");
+                determineDealerHand();
+            }
+            else {
+                playerDone();
+            }
         }
+        dealerLock.unlock();
     }
 
     private void dealCards() {
@@ -183,10 +206,14 @@ public class DealerController {
             System.out.println("player " + player.getId() + " busted");
             player.setCurrentWager(0);
             player.setActive(false);
-            playersLeft--;
-            if (playersLeft == 0) {
+            currentPosition++;
+
+            if (currentPosition == playerCount) {
                 System.out.println("all players done, dealer's turn");
                 determineDealerHand();
+            }
+            else {
+                playerDone();
             }
         }
     }
@@ -231,6 +258,8 @@ public class DealerController {
                 p.setCurrentWager(0);
             }
         }
+        currentPosition = 0;
+        playerDone();
 
     }
     private void checkDeck() {
@@ -249,6 +278,22 @@ public class DealerController {
             System.out.println("player " + p.getId() + ":");
             System.out.println("\tchip total: " + p.getStack());
             System.out.println(" ");
+        }
+    }
+
+    private void playerWait() {
+        synchronized (playerMonitor) {
+            try {
+                playerMonitor.wait();
+            }
+            catch(Exception e) {
+                System.err.println("error waiting for player lock");
+            }
+        }
+    }
+    private void playerDone() {
+        synchronized (playerMonitor) {
+            playerMonitor.notifyAll();
         }
     }
 

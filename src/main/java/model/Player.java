@@ -5,25 +5,27 @@ import model.Hand;
 
 public class Player {
 
-    int id;
+    String id;
 	private Hand myHand;
 	private int stack;
 	private int currentWager;
     boolean active;
+
+    private final int position;
 	
-	public Player() {
-        id = 0;
+	public Player(int position) {
 		myHand = new Hand();
 		stack = 0;
 		currentWager = 0;
         active = false;
+        this.position = position;
 	}
 
-    public int getId() {
+    public String getId() {
         return id;
     }
 
-    public void setId(int id) {
+    public void setId(String id) {
         this.id = id;
     }
 	
@@ -65,6 +67,10 @@ public class Player {
 
     public void setActive(boolean active) {
         this.active = active;
+    }
+
+    public int getPosition() {
+        return position;
     }
 	
 
