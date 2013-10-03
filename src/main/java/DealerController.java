@@ -11,9 +11,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import util.IdGenerator;
 
-//TODO: blackjack                 *done
-//TODO: double down?
-//TODO: player loses all money    *done
+//TODO: double down
+//TODO: I think round info is wrong
 
 @RestController
 @EnableAutoConfiguration
@@ -28,6 +27,7 @@ public class DealerController {
 	private int playerCount = 0;
     private StartInfo roundInfo;
     private final int NUM_ROUNDS;
+    private int NUM_PLAYERS;
     private int round = 0;
     private boolean done = false;
     private int currentPosition = 0;
@@ -38,9 +38,9 @@ public class DealerController {
     private final Object playerMonitor;
 
     public DealerController() {
-        this(1000);
+        this(1000, 2);
     }
-	public DealerController(int numRounds) {
+	public DealerController(int numRounds, int numPlayers) {
         deck = new Deck();
 		players = new HashMap<String, Player>();
         roundInfo = new StartInfo();
@@ -48,6 +48,7 @@ public class DealerController {
         playerMonitor = new Object();
         idGen = new IdGenerator();
         NUM_ROUNDS = numRounds;
+        NUM_PLAYERS = numPlayers;
 	}
 	
 	//creates new player and gives them 1000 chips
@@ -67,7 +68,6 @@ public class DealerController {
         System.out.println("added player with id: " + playerId);
 
         dealerLock.unlock();
-
 		return playerId;
 	}
 
@@ -75,6 +75,16 @@ public class DealerController {
     //returns a list of hands and dealer up card
     @RequestMapping("/start")
 	public StartInfo start(@RequestParam(value = "playerId", required = true) String playerId, @RequestParam(value = "wager", required = true) int wager) {
+        while (playerCount < NUM_PLAYERS) {
+            System.out.println("waiting for other players");
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                e.printStackTrace();  //To change body of catch statement use File | Settings | File Templates.
+            }
+        }
+
+        //playerId error check
         dealerLock.lock();
         Player thisPlayer = players.get(playerId);
         if (thisPlayer == null) {
@@ -82,44 +92,49 @@ public class DealerController {
             dealerLock.unlock();
             return null;
         }
-        if (thisPlayer.getStack() < MINIMUM_WAGER) {
-            int playerPosition = thisPlayer.getPosition();
-            players.remove(playerId);
-            for (Player p : players.values()) {
-                int position = p.getPosition();
-                if (position > playerPosition) {
-                    p.setPosition(position - 1);
-                }
-            }
-            playerCount--;
+
+        //make player wait their turn
+        dealerLock.unlock();
+        while(thisPlayer.getPosition() != currentPosition) {
+            System.out.println(thisPlayer.getName() + " is waiting for his/her turn");
+            playerWait();
         }
+        dealerLock.lock();
+
+        //wager error check
         if (wager < MINIMUM_WAGER || wager > thisPlayer.getStack()) {
-            System.err.println("invalid wager amount: " + wager);
+            System.err.println("invalid wager amount for " + thisPlayer.getName() + ": " + wager);
             dealerLock.unlock();
             return null;
         }
+        //check if player has called start already
         if (thisPlayer.getCurrentWager() != 0) {
             System.err.println(thisPlayer.getName() + " has already placed his/her bet");
             dealerLock.unlock();
             return null;
         }
+        //see if game is over
         if (round == NUM_ROUNDS) {
             if (!done) {
                 done = true;
             }
+            dealerLock.unlock();
             return null;
         }
         System.out.println("deal requested: setting " + thisPlayer.getName() + "'s wager to " + wager);
         dealRequests++;
         thisPlayer.setCurrentWager(wager);
 
+        //if this is the first request for a deal, deal cards to begin new round
         if (dealRequests == 1) {
             round++;
             dealCards();
         }
 
         roundInfo.setYourHand(thisPlayer.getHand());
-        if (dealRequests == playerCount) {
+
+        //if this is the last request, reset roundInfo for new round
+        if (dealRequests == NUM_PLAYERS) {
             StartInfo roundInfoClone = roundInfo.clone();
             roundInfo.getRevealedCards().clear();
             roundInfo.setShuffled(false);
@@ -145,11 +160,6 @@ public class DealerController {
             System.err.println(thisPlayer.getName() + " has already finished round");
         }
         else {
-            dealerLock.unlock();
-            while(thisPlayer.getPosition() != currentPosition) {
-                playerWait();
-            }
-            dealerLock.lock();
             newCard = deck.drawCard();
             roundInfo.addRevealedCard(newCard);
             thisPlayer.giveCard(newCard);
@@ -173,13 +183,13 @@ public class DealerController {
         }
         else {
             thisPlayer.setActive(false);
+            System.out.println(thisPlayer.getName() + " stands");
             currentPosition++;
-            if (currentPosition == playerCount) {
+            if (currentPosition == NUM_PLAYERS) {
                 System.out.println("all players done, dealer's turn");
                 determineDealerHand();
             }
             else {
-                System.out.println(thisPlayer.getName() + " stands");
                 playerDone();
             }
         }
@@ -194,6 +204,7 @@ public class DealerController {
             player.setActive(true);
         }
         dealerHand = new Hand();
+        //deal cards in standard order and update players map
         for (int i = 0; i < 2; i++) {
             for (Player player : players.values()) {
                 checkDeck();
@@ -221,8 +232,8 @@ public class DealerController {
             player.setCurrentWager(0);
             player.setActive(false);
             currentPosition++;
-
-            if (currentPosition == playerCount) {
+            System.out.println("moving on to position " + currentPosition);
+            if (currentPosition == NUM_PLAYERS) {
                 System.out.println("all players done, dealer's turn");
                 determineDealerHand();
             }
@@ -289,8 +300,24 @@ public class DealerController {
                     p.giveChips(p.getCurrentWager());
                 }
                 p.setCurrentWager(0);
+
+                //check for broke players and remove them
+                if (p.getStack() < MINIMUM_WAGER) {
+                    System.out.println(p.getName() + " ran out of chips");
+                    int playerPosition = p.getPosition();
+                    players.remove(p.getId());
+                    for (Player pl : players.values()) {
+                        int position = pl.getPosition();
+                        if (position > playerPosition) {
+                            pl.setPosition(position - 1);
+                            players.put(pl.getId(), pl);
+                        }
+                    }
+                    NUM_PLAYERS--;
+                }
             }
         }
+
         printTotals();
         currentPosition = 0;
         playerDone();
