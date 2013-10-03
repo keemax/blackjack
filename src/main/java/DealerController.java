@@ -1,4 +1,6 @@
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -14,7 +16,6 @@ import org.springframework.web.bind.annotation.RestController;
 import util.IdGenerator;
 
 //TODO: limit player adding
-//TODO: revealing cards to player
 
 @RestController
 @EnableAutoConfiguration
@@ -27,8 +28,9 @@ public class DealerController {
 	private Hand dealerHand;
 	private Map<String, Player> players;
     private Card dealerUpCard;
+    private List<Card> revealedCards;
+    private int deckNum = 0;
 	private int playerCount = 0;
-    private StartInfo roundInfo;
     private final int NUM_ROUNDS;
     private int NUM_PLAYERS;
     private int round = 0;
@@ -41,12 +43,12 @@ public class DealerController {
     private final Object playerMonitor;
 
     public DealerController() {
-        this(1000, 2);
+        this(10, 2);
     }
 	public DealerController(int numRounds, int numPlayers) {
         deck = new Deck();
 		players = new HashMap<String, Player>();
-        roundInfo = new StartInfo();
+        revealedCards = new ArrayList<Card>();
 		dealerLock = new ReentrantLock();
         playerMonitor = new Object();
         idGen = new IdGenerator();
@@ -62,7 +64,6 @@ public class DealerController {
 		dealerLock.lock();
         Player newPlayer = new Player();
         newPlayer.setPosition(playerCount);
-//        newPlayer.setActive(true);
         playerCount++;
         String playerId = idGen.nextId();
         newPlayer.setId(playerId);
@@ -89,7 +90,6 @@ public class DealerController {
 
         Player thisPlayer = players.get(playerId);
         if (!determinePlayerEligibility(thisPlayer)) {
-//            System.out.println("bad request to /start from player");
             dealerLock.unlock();
             return new ResponseEntity<StartInfo>(HttpStatus.BAD_REQUEST);
         }
@@ -124,21 +124,12 @@ public class DealerController {
             round++;
             dealCards();
         }
-
-        roundInfo.setYourHand(thisPlayer.getHand());
-
-        //if this is the last request, reset roundInfo for new round
-        if (dealRequests == NUM_PLAYERS) {
-            StartInfo roundInfoClone = roundInfo.clone();
-            roundInfo.getRevealedCards().clear();
-            roundInfo.setShuffled(false);
-            dealRequests = 0;
-            dealerLock.unlock();
-            return new ResponseEntity<StartInfo>(roundInfoClone, HttpStatus.OK);
-        }
+        StartInfo startInfo = new StartInfo();
+        startInfo.setYourHand(thisPlayer.getHand());
+        startInfo.setDealerUpCard(dealerUpCard);
 
         dealerLock.unlock();
-        return new ResponseEntity<StartInfo>(roundInfo, HttpStatus.OK);
+        return new ResponseEntity<StartInfo>(startInfo, HttpStatus.OK);
     }
 
     @RequestMapping("/hit")
@@ -156,7 +147,7 @@ public class DealerController {
         }
         checkDeck();
         Card newCard = deck.drawCard();
-        roundInfo.addRevealedCard(newCard);
+        revealedCards.add(newCard);
         thisPlayer.giveCard(newCard);
         System.out.println(thisPlayer.getName() + " hits: " + newCard.toString());
 
@@ -194,7 +185,7 @@ public class DealerController {
         }
         checkDeck();
         Card newCard = deck.drawCard();
-        roundInfo.addRevealedCard(newCard);
+        revealedCards.add(newCard);
         thisPlayer.giveCard(newCard);
         System.out.println(thisPlayer.getName() + " doubled down: " + newCard.toString());
         thisPlayer.setCurrentWager(thisPlayer.getCurrentWager() * 2);
@@ -238,6 +229,14 @@ public class DealerController {
 
     }
 
+    @RequestMapping("/getRevealedCards")
+    public Map<String, Object> getRevealedCards() {
+        Map<String, Object> resp = new HashMap<String, Object>();
+        resp.put("deckNumber", deckNum);
+        resp.put("revealedCards", revealedCards);
+        return resp;
+    }
+
     @RequestMapping("/done")
     public boolean done() {
         return done;
@@ -267,7 +266,7 @@ public class DealerController {
             for (Player player : players.values()) {
                 checkDeck();
                 Card newCard = deck.drawCard();
-                roundInfo.addRevealedCard(newCard);
+                revealedCards.add(newCard);
                 player.giveCard(newCard);
                 players.put(player.getId(), player);
                 System.out.println("dealing " + newCard.toString() + " to " + player.getName());
@@ -277,8 +276,8 @@ public class DealerController {
             System.out.println("dealing " + dealerCard.toString() + " to dealer");
 
             if (i == 1) {
-                roundInfo.addRevealedCard(dealerCard);
-                roundInfo.setDealerUpCard(dealerCard);
+                revealedCards.add(dealerCard);
+                dealerUpCard = dealerCard;
             }
         }
     }
@@ -287,13 +286,13 @@ public class DealerController {
         //reveal the dealer down card
         Card dealerDownCard = dealerHand.getCards().get(0);
         System.out.println("revealing dealer down card: " + dealerDownCard.toString());
-        roundInfo.addRevealedCard(dealerDownCard);
+        revealedCards.add(dealerDownCard);
         if (dealerHand.isSoft()) {
             while(dealerHand.getValue() < 8) {
                 checkDeck();
                 Card newCard = deck.drawCard();
                 System.out.println("dealer hits: " + newCard.toString());
-                roundInfo.addRevealedCard(newCard);
+                revealedCards.add(newCard);
                 dealerHand.addCard(newCard);
             }
         }
@@ -302,7 +301,7 @@ public class DealerController {
                 checkDeck();
                 Card newCard = deck.drawCard();
                 System.out.println("dealer hits: " + newCard.toString());
-                roundInfo.addRevealedCard(newCard);
+                revealedCards.add(newCard);
                 dealerHand.addCard(newCard);
             }
 
@@ -382,19 +381,19 @@ public class DealerController {
                 }
             }
         }
-
         printTotals();
+        dealRequests = 0;
         currentPosition = 0;
     }
+
     private void checkDeck() {
         if (deck.cardsLeft() < 5) {
             System.out.println("shuffling deck");
             deck = new Deck();
-            roundInfo.getRevealedCards().clear();
-            roundInfo.setShuffled(true);
+            revealedCards.clear();
+            deckNum++;
         }
     }
-
 
     private void printTotals() {
         System.out.println("****************** chip totals ******************\n");
