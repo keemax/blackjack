@@ -62,7 +62,6 @@ public class Player {
     }
 	
 	public void setCurrentWager(int amount) {
-		stack -= amount;
 		currentWager = amount;
 	}
     public int getCurrentWager() {
