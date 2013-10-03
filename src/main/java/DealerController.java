@@ -109,6 +109,7 @@ public class DealerController {
         //see if game is over
         if (round == NUM_ROUNDS) {
             if (!done) {
+                System.out.println("GAME OVER!");
                 done = true;
             }
             dealerLock.unlock();
@@ -121,7 +122,6 @@ public class DealerController {
 
         //if this is the first request for a deal, deal cards to begin new round
         if (dealRequests == 1) {
-            round++;
             dealCards();
         }
         StartInfo startInfo = new StartInfo();
@@ -382,6 +382,7 @@ public class DealerController {
             }
         }
         printTotals();
+        round++;
         dealRequests = 0;
         currentPosition = 0;
     }
