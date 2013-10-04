@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 import util.IdGenerator;
 
 //TODO: limit player adding
+//TODO: return different status if it's not player's turn
 
 @RestController
 @EnableAutoConfiguration
@@ -43,7 +44,7 @@ public class DealerController {
     private final Object playerMonitor;
 
     public DealerController() {
-        this(10, 2);
+        this(10, 1);
     }
 	public DealerController(int numRounds, int numPlayers) {
         deck = new Deck();
@@ -82,76 +83,116 @@ public class DealerController {
 	public ResponseEntity<StartInfo> start(@RequestParam(value = "playerId", required = true) String playerId, @RequestParam(value = "wager", required = true) int wager) {
         if (playerCount < NUM_PLAYERS) {
             System.out.println("waiting for players to join");
-            return new ResponseEntity<StartInfo>(HttpStatus.BAD_REQUEST);
+            return new ResponseEntity<StartInfo>(HttpStatus.FORBIDDEN);
         }
-
         //playerId error check
         dealerLock.lock();
-
+        ResponseEntity<StartInfo> resp;
         Player thisPlayer = players.get(playerId);
-        if (!determinePlayerEligibility(thisPlayer)) {
-            dealerLock.unlock();
-            return new ResponseEntity<StartInfo>(HttpStatus.BAD_REQUEST);
-        }
 
-        //wager error check
-        if (wager < MINIMUM_WAGER || wager > thisPlayer.getStack()) {
-            System.err.println("invalid wager amount for " + thisPlayer.getName() + ": " + wager);
-            dealerLock.unlock();
-            return new ResponseEntity<StartInfo>(HttpStatus.BAD_REQUEST);
+        if (thisPlayer == null) {
+            System.out.println("invalid player id");
+            resp = new ResponseEntity<StartInfo>(HttpStatus.BAD_REQUEST);
         }
-        //check if player has called start already
-        if (thisPlayer.isActive()) {
-            System.err.println(thisPlayer.getName() + " has already placed his/her bet");
-            dealerLock.unlock();
-            return new ResponseEntity<StartInfo>(HttpStatus.BAD_REQUEST);
+        else if (thisPlayer.getPosition() != currentPosition || thisPlayer.isActive()) {
+            System.out.println("player must wait his/her turn");
+            resp = new ResponseEntity<StartInfo>(HttpStatus.FORBIDDEN);
+        }
+        //wager error check
+        else if (wager < MINIMUM_WAGER || wager > thisPlayer.getStack()) {
+            System.err.println("invalid wager amount for " + thisPlayer.getName() + ": " + wager);
+            resp = new ResponseEntity<StartInfo>(HttpStatus.BAD_REQUEST);
         }
         //see if game is over
-        if (round == NUM_ROUNDS) {
+        else if (round == NUM_ROUNDS) {
             if (!done) {
                 System.out.println("GAME OVER!");
                 done = true;
             }
-            dealerLock.unlock();
-            return new ResponseEntity<StartInfo>(HttpStatus.BAD_REQUEST);
+            resp = new ResponseEntity<StartInfo>(HttpStatus.BAD_REQUEST);
         }
-        System.out.println("deal requested: setting " + thisPlayer.getName() + "'s wager to " + wager);
-        dealRequests++;
-        thisPlayer.setCurrentWager(wager);
-        thisPlayer.setActive(true);
+        else {
+            System.out.println("deal requested: setting " + thisPlayer.getName() + "'s wager to " + wager);
+            dealRequests++;
+            thisPlayer.setCurrentWager(wager);
+            thisPlayer.setActive(true);
 
-        //if this is the first request for a deal, deal cards to begin new round
-        if (dealRequests == 1) {
-            dealCards();
+            //if this is the first request for a deal, deal cards to begin new round
+            if (dealRequests == 1) {
+                dealCards();
+            }
+            StartInfo startInfo = new StartInfo();
+            startInfo.setYourHand(thisPlayer.getHand());
+            startInfo.setDealerUpCard(dealerUpCard);
+            resp = new ResponseEntity<StartInfo>(startInfo, HttpStatus.OK);
         }
-        StartInfo startInfo = new StartInfo();
-        startInfo.setYourHand(thisPlayer.getHand());
-        startInfo.setDealerUpCard(dealerUpCard);
 
         dealerLock.unlock();
-        return new ResponseEntity<StartInfo>(startInfo, HttpStatus.OK);
+        return resp;
+//        return new ResponseEntity<StartInfo>(startInfo, HttpStatus.OK);
     }
 
     @RequestMapping("/hit")
     public ResponseEntity<Card> hit(@RequestParam(value = "playerId", required = true) String playerId) {
         dealerLock.lock();
+        ResponseEntity<Card> resp;
         Player thisPlayer = players.get(playerId);
-        if (!determinePlayerEligibility(thisPlayer)) {
-            dealerLock.unlock();
-            return new ResponseEntity<Card>(HttpStatus.BAD_REQUEST);
-        }
-        else if (!thisPlayer.isActive()) {
-            System.out.println("player finished turn already");
-            dealerLock.unlock();
-            return new ResponseEntity<Card>(HttpStatus.BAD_REQUEST);
-        }
-        checkDeck();
-        Card newCard = deck.drawCard();
-        revealedCards.add(newCard);
-        thisPlayer.giveCard(newCard);
-        System.out.println(thisPlayer.getName() + " hits: " + newCard.toString());
 
-        if (thisPlayer.getHand().getValue() > 21) {
+        if (thisPlayer == null) {
+            System.out.println("invalid player id");
+            resp = new ResponseEntity<Card>(HttpStatus.BAD_REQUEST);
+        }
+        else if (thisPlayer.getPosition() != currentPosition || !thisPlayer.isActive()) {
+            System.out.println("player must wait his/her turn");
+            resp = new ResponseEntity<Card>(HttpStatus.FORBIDDEN);
+        }
+        else {
+            checkDeck();
+            Card newCard = deck.drawCard();
+            revealedCards.add(newCard);
+            thisPlayer.giveCard(newCard);
+            System.out.println(thisPlayer.getName() + " hits: " + newCard.toString());
+
+            if (thisPlayer.getHand().getValue() > 21) {
+                thisPlayer.setActive(false);
+                currentPosition++;
+                System.out.println("moving on to position " + currentPosition);
+                if (currentPosition == NUM_PLAYERS) {
+                    System.out.println("all players done, dealer's turn");
+                    determineDealerHand();
+                }
+            }
+            resp = new ResponseEntity<Card>(newCard, HttpStatus.OK);
+        }
+
+        dealerLock.unlock();
+        return resp;
+    }
+
+    @RequestMapping("/doubleDown")
+	public ResponseEntity<Card> doubleDown(@RequestParam(value = "playerId", required = true) String playerId) {
+		dealerLock.lock();
+        ResponseEntity<Card> resp;
+		Player thisPlayer = players.get(playerId);
+        if (thisPlayer == null) {
+            System.out.println("invalid player id");
+            resp = new ResponseEntity<Card>(HttpStatus.BAD_REQUEST);
+        }
+        else if (thisPlayer.getPosition() != currentPosition || !thisPlayer.isActive()) {
+            System.out.println("player must wait his/her turn");
+            resp = new ResponseEntity<Card>(HttpStatus.FORBIDDEN);
+        }
+        else if (thisPlayer.getHand().getCards().size() > 2) {
+            System.out.println("can't double down after hitting");
+            resp = new ResponseEntity<Card>(HttpStatus.FORBIDDEN);
+        }
+        else {
+            checkDeck();
+            Card newCard = deck.drawCard();
+            revealedCards.add(newCard);
+            thisPlayer.giveCard(newCard);
+            System.out.println(thisPlayer.getName() + " doubled down: " + newCard.toString());
+            thisPlayer.setCurrentWager(thisPlayer.getCurrentWager() * 2);
             thisPlayer.setActive(false);
             currentPosition++;
             System.out.println("moving on to position " + currentPosition);
@@ -159,46 +200,11 @@ public class DealerController {
                 System.out.println("all players done, dealer's turn");
                 determineDealerHand();
             }
+            resp = new ResponseEntity<Card>(newCard, HttpStatus.OK);
         }
 
         dealerLock.unlock();
-        return new ResponseEntity<Card>(newCard, HttpStatus.OK);
-    }
-
-    @RequestMapping("/doubleDown")
-	public ResponseEntity<Card> doubleDown(@RequestParam(value = "playerId", required = true) String playerId) {
-		dealerLock.lock();
-		Player thisPlayer = players.get(playerId);
-        if (!determinePlayerEligibility(thisPlayer)) {
-            dealerLock.unlock();
-            return new ResponseEntity<Card>(HttpStatus.BAD_REQUEST);
-        }
-        else if (!thisPlayer.isActive()) {
-            System.out.println("player finished turn already");
-            dealerLock.unlock();
-            return new ResponseEntity(HttpStatus.BAD_REQUEST);
-        }
-        if (thisPlayer.getHand().getCards().size() > 2) {
-            System.out.println("can't double down after hitting");
-            dealerLock.unlock();
-            return new ResponseEntity(HttpStatus.BAD_REQUEST);
-        }
-        checkDeck();
-        Card newCard = deck.drawCard();
-        revealedCards.add(newCard);
-        thisPlayer.giveCard(newCard);
-        System.out.println(thisPlayer.getName() + " doubled down: " + newCard.toString());
-        thisPlayer.setCurrentWager(thisPlayer.getCurrentWager() * 2);
-        thisPlayer.setActive(false);
-        currentPosition++;
-        System.out.println("moving on to position " + currentPosition);
-        if (currentPosition == NUM_PLAYERS) {
-            System.out.println("all players done, dealer's turn");
-            determineDealerHand();
-        }
-
-        dealerLock.unlock();
-        return new ResponseEntity<Card>(newCard, HttpStatus.OK);
+        return resp;
 
 
 	}
@@ -206,26 +212,29 @@ public class DealerController {
     @RequestMapping("/stand")
     public ResponseEntity stand(@RequestParam(value = "playerId", required = true) String playerId) {
         dealerLock.lock();
+        ResponseEntity resp;
         Player thisPlayer = players.get(playerId);
-        if (!determinePlayerEligibility(thisPlayer)) {
-            dealerLock.unlock();
-            return new ResponseEntity(HttpStatus.BAD_REQUEST);
+        if (thisPlayer == null) {
+            System.out.println("invalid player id");
+            resp = new ResponseEntity<Card>(HttpStatus.BAD_REQUEST);
         }
-        else if (!thisPlayer.isActive()) {
-            System.out.println("player finished turn already");
-            dealerLock.unlock();
-            return new ResponseEntity(HttpStatus.BAD_REQUEST);
+        else if (thisPlayer.getPosition() != currentPosition || !thisPlayer.isActive()) {
+            System.out.println("player must wait his/her turn");
+            resp = new ResponseEntity<Card>(HttpStatus.FORBIDDEN);
         }
-        thisPlayer.setActive(false);
-        System.out.println(thisPlayer.getName() + " stands");
-        currentPosition++;
-        System.out.println("moving on to position " + currentPosition);
-        if (currentPosition == NUM_PLAYERS) {
-            System.out.println("all players done, dealer's turn");
-            determineDealerHand();
+        else {
+            thisPlayer.setActive(false);
+            System.out.println(thisPlayer.getName() + " stands");
+            currentPosition++;
+            System.out.println("moving on to position " + currentPosition);
+            if (currentPosition == NUM_PLAYERS) {
+                System.out.println("all players done, dealer's turn");
+                determineDealerHand();
+            }
+            resp = new ResponseEntity(HttpStatus.OK);
         }
         dealerLock.unlock();
-        return new ResponseEntity(HttpStatus.OK);
+        return resp;
 
     }
 
@@ -252,18 +261,6 @@ public class DealerController {
     @RequestMapping("/done")
     public boolean done() {
         return done;
-    }
-
-    private boolean determinePlayerEligibility(Player p) {
-        if (p == null) {
-            System.out.println("bad player id");
-            return false;
-        }
-        else if (p.getPosition() != currentPosition) {
-            System.out.println("player must wait his/her turn");
-            return false;
-        }
-        return true;
     }
 
     private void dealCards() {
