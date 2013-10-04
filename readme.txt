@@ -4,6 +4,14 @@
 *                        *
 **************************
 
+Some rules
+-Single deck
+-Dealer hits soft 17
+-No splitting
+-No insurance
+-Dealer doesn't peek for blackjack
+
+
 ****OBJECT REFERENCE****
 
 Card
