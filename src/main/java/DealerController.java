@@ -41,17 +41,15 @@ public class DealerController {
     private IdGenerator idGen;
 
     private final Lock dealerLock;
-    private final Object playerMonitor;
 
     public DealerController() {
-        this(10, 1);
+        this(1000, 2);
     }
 	public DealerController(int numRounds, int numPlayers) {
         deck = new Deck();
 		players = new HashMap<String, Player>();
         revealedCards = new ArrayList<Card>();
 		dealerLock = new ReentrantLock();
-        playerMonitor = new Object();
         idGen = new IdGenerator();
         NUM_ROUNDS = numRounds;
         NUM_PLAYERS = numPlayers;
@@ -218,9 +216,12 @@ public class DealerController {
             System.out.println("invalid player id");
             resp = new ResponseEntity<Card>(HttpStatus.BAD_REQUEST);
         }
-        else if (thisPlayer.getPosition() != currentPosition || !thisPlayer.isActive()) {
+        else if (thisPlayer.getPosition() != currentPosition) {
             System.out.println("player must wait his/her turn");
             resp = new ResponseEntity<Card>(HttpStatus.FORBIDDEN);
+        }
+        else if (!thisPlayer.isActive()) {
+            resp = new ResponseEntity(HttpStatus.OK);
         }
         else {
             thisPlayer.setActive(false);
@@ -371,10 +372,12 @@ public class DealerController {
                     System.out.println(p.getName() + " lost to dealer and loses " + wager + " chips");
                     p.takeChips(wager);
                 }
-
                 p.setCurrentWager(0);
-
-                //check for broke players and remove them
+            }
+        }
+        //check for broke players and remove them
+        synchronized (dealerLock) {
+            for (Player p : players.values()) {
                 if (p.getStack() < MINIMUM_WAGER) {
                     System.out.println(p.getName() + " ran out of chips");
                     int playerPosition = p.getPosition();
