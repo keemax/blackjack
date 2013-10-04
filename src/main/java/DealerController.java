@@ -237,6 +237,18 @@ public class DealerController {
         return resp;
     }
 
+    @RequestMapping("/getStack")
+    public ResponseEntity<Integer> getStack(@RequestParam(value = "playerId", required = true) String playerId) {
+        Player thisPlayer = players.get(playerId);
+        if (thisPlayer == null) {
+            System.out.println("invalid player id");
+            return new ResponseEntity<Integer>(HttpStatus.BAD_REQUEST);
+        }
+        else {
+            return new ResponseEntity<Integer>(thisPlayer.getStack(), HttpStatus.OK);
+        }
+    }
+
     @RequestMapping("/done")
     public boolean done() {
         return done;

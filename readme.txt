@@ -80,6 +80,15 @@ returns: {"deckNumber": int,
 Returns ALL the cards that have been flipped face up from the current deck. When the deck is shuffled, deckNumber is incremented and revealedCards is cleared.
 
 
+Get Chip Count
+-------------------
+mapping: /getStack
+parameters: playerId (String)
+returns: int
+
+Returns current chip count for player with id playerId. Returns 400 status if playerId is invalid.
+
+
 Game Over
 -------------------
 mapping: /done
