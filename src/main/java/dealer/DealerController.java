@@ -1,3 +1,5 @@
+package dealer;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -14,9 +16,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import util.IdGenerator;
+import util.PitBoss;
 
 //TODO: limit player adding
-//TODO: return different status if it's not player's turn
 
 @RestController
 @EnableAutoConfiguration
@@ -37,6 +39,7 @@ public class DealerController {
     private int round = 0;
     private boolean done = false;
     private int currentPosition = 0;
+    private PitBoss pitBoss;
     private int dealRequests = 0;
     private IdGenerator idGen;
 
@@ -51,8 +54,10 @@ public class DealerController {
         revealedCards = new ArrayList<Card>();
 		dealerLock = new ReentrantLock();
         idGen = new IdGenerator();
+        pitBoss = new PitBoss(this);
         NUM_ROUNDS = numRounds;
         NUM_PLAYERS = numPlayers;
+
 	}
 	
 	//creates new player and gives them 1000 chips
@@ -70,7 +75,10 @@ public class DealerController {
         newPlayer.giveChips(STARTING_CHIPS);
         players.put(playerId, newPlayer);
         System.out.println("added player with id: " + playerId);
-
+        if (playerCount == NUM_PLAYERS) {
+            pitBoss.updateSwitchTime();
+            pitBoss.start();
+        }
         dealerLock.unlock();
 		return playerId;
 	}
@@ -93,7 +101,7 @@ public class DealerController {
             resp = new ResponseEntity<StartInfo>(HttpStatus.BAD_REQUEST);
         }
         else if (thisPlayer.getPosition() != currentPosition || thisPlayer.isActive()) {
-            System.out.println("player must wait his/her turn");
+//            System.out.println("player must wait his/her turn");
             resp = new ResponseEntity<StartInfo>(HttpStatus.FORBIDDEN);
         }
         //wager error check
@@ -102,7 +110,7 @@ public class DealerController {
             resp = new ResponseEntity<StartInfo>(HttpStatus.BAD_REQUEST);
         }
         //see if game is over
-        else if (round == NUM_ROUNDS) {
+        else if (round == NUM_ROUNDS || NUM_PLAYERS == 0) {
             if (!done) {
                 System.out.println("GAME OVER!");
                 done = true;
@@ -141,7 +149,7 @@ public class DealerController {
             resp = new ResponseEntity<Card>(HttpStatus.BAD_REQUEST);
         }
         else if (thisPlayer.getPosition() != currentPosition || !thisPlayer.isActive()) {
-            System.out.println("player must wait his/her turn");
+//            System.out.println("player must wait his/her turn");
             resp = new ResponseEntity<Card>(HttpStatus.FORBIDDEN);
         }
         else {
@@ -159,6 +167,7 @@ public class DealerController {
                     System.out.println("all players done, dealer's turn");
                     determineDealerHand();
                 }
+                pitBoss.updateSwitchTime();
             }
             resp = new ResponseEntity<Card>(newCard, HttpStatus.OK);
         }
@@ -177,7 +186,7 @@ public class DealerController {
             resp = new ResponseEntity<Card>(HttpStatus.BAD_REQUEST);
         }
         else if (thisPlayer.getPosition() != currentPosition || !thisPlayer.isActive()) {
-            System.out.println("player must wait his/her turn");
+//            System.out.println("player must wait his/her turn");
             resp = new ResponseEntity<Card>(HttpStatus.FORBIDDEN);
         }
         else if (thisPlayer.getHand().getCards().size() > 2) {
@@ -198,6 +207,7 @@ public class DealerController {
                 System.out.println("all players done, dealer's turn");
                 determineDealerHand();
             }
+            pitBoss.updateSwitchTime();
             resp = new ResponseEntity<Card>(newCard, HttpStatus.OK);
         }
 
@@ -217,7 +227,7 @@ public class DealerController {
             resp = new ResponseEntity<Card>(HttpStatus.BAD_REQUEST);
         }
         else if (thisPlayer.getPosition() != currentPosition) {
-            System.out.println("player must wait his/her turn");
+//            System.out.println("player must wait his/her turn");
             resp = new ResponseEntity<Card>(HttpStatus.FORBIDDEN);
         }
         else if (!thisPlayer.isActive()) {
@@ -232,6 +242,7 @@ public class DealerController {
                 System.out.println("all players done, dealer's turn");
                 determineDealerHand();
             }
+            pitBoss.updateSwitchTime();
             resp = new ResponseEntity(HttpStatus.OK);
         }
         dealerLock.unlock();
@@ -376,27 +387,61 @@ public class DealerController {
             }
         }
         //check for broke players and remove them
-        synchronized (dealerLock) {
-            for (Player p : players.values()) {
-                if (p.getStack() < MINIMUM_WAGER) {
-                    System.out.println(p.getName() + " ran out of chips");
-                    int playerPosition = p.getPosition();
-                    players.remove(p.getId());
-                    for (Player pl : players.values()) {
-                        int position = pl.getPosition();
-                        if (position > playerPosition) {
-                            pl.setPosition(position - 1);
-                            players.put(pl.getId(), pl);
-                        }
-                    }
-                    NUM_PLAYERS--;
-                }
+        List<String> removeIds = new ArrayList<String>();
+        for (Player p : players.values()) {
+            if (p.getStack() < MINIMUM_WAGER) {
+                System.out.println(p.getName() + " ran out of chips");
+                removeIds.add(p.getId());
             }
+        }
+        for (String id : removeIds) {
+            removePlayer(id);
         }
         printTotals();
         round++;
         dealRequests = 0;
         currentPosition = 0;
+    }
+
+    private void removePlayer(String playerId) {
+        if (playerId == null) {
+            return;
+        }
+        Player victim = players.remove(playerId);
+        int playerPosition = victim.getPosition();
+        boolean playerMoved = false;
+        for (Player pl : players.values()) {
+            int position = pl.getPosition();
+            if (position > playerPosition) {
+                System.out.println("moving " + pl.getName() + " from position " + position + " to position " + (position-1));
+                pl.setPosition(position - 1);
+                players.put(pl.getId(), pl);
+                playerMoved = true;
+            }
+        }
+        NUM_PLAYERS--;
+        if (!playerMoved) {
+            System.out.println("all players done, dealer's turn");
+            determineDealerHand();
+        }
+        pitBoss.updateSwitchTime();
+
+    }
+
+    public void removeCurrentPlayer() {
+        dealerLock.lock();
+        String playerId = null;
+        for (Player p : players.values()) {
+            if (p.getPosition() == currentPosition) {
+                System.out.println(p.getName() + " took too long");
+                playerId = p.getId();
+                break;
+            }
+        }
+        removePlayer(playerId);
+
+
+        dealerLock.unlock();
     }
 
     private void checkDeck() {

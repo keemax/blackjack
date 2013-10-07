@@ -25,7 +25,7 @@
     </dependencies>
 
     <properties>
-        <start-class>DealerController</start-class>
+        <start-class>dealer.DealerController</start-class>
     </properties>
 
     <build>
