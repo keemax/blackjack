@@ -135,7 +135,6 @@ public class DealerController {
 
         dealerLock.unlock();
         return resp;
-//        return new ResponseEntity<StartInfo>(startInfo, HttpStatus.OK);
     }
 
     @RequestMapping("/hit")

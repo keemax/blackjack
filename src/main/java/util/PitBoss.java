@@ -10,7 +10,7 @@ import dealer.DealerController;
  * To change this template use File | Settings | File Templates.
  */
 public class PitBoss extends Thread {
-    private final static int BOOT_TIME = 5000;
+    private final static int BOOT_TIME = 10000;
 
     private long switchTime;
     private DealerController dc;
@@ -39,7 +39,7 @@ public class PitBoss extends Thread {
             } catch (InterruptedException e) {
                 e.printStackTrace();  //To change body of catch statement use File | Settings | File Templates.
             }
-            if (System.currentTimeMillis() - switchTime > 10000) {
+            if (System.currentTimeMillis() - switchTime > BOOT_TIME) {
                 dc.removeCurrentPlayer();
             }
         }
